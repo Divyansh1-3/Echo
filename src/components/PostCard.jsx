@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 
@@ -90,37 +91,56 @@ export default function PostCard({ post }) {
       )}
 
       <div className="flex gap-space-md">
-        {/* Author Avatar or Initials */}
-        {post.author.avatar ? (
-          <img
-            alt={post.author.name}
-            className="w-10 h-10 rounded-full object-cover shrink-0 shadow-sm"
-            src={post.author.avatar}
-          />
-        ) : (
-          <div className="w-10 h-10 rounded-full bg-surface-container-high flex items-center justify-center text-primary-container font-headline-md text-headline-md font-extrabold shrink-0 shadow-sm">
-            {post.author.initials || "U"}
-          </div>
-        )}
+        {/* Author Avatar or Initials (Navigates to author's profile) */}
+        {(() => {
+          const profilePath = `/profile/${post.author?.handle || post.userId || post.author?.id || ''}`;
+          return (
+            <Link
+              to={profilePath}
+              onClick={(e) => e.stopPropagation()}
+              className="shrink-0 group/avatar block"
+              title={`View @${post.author?.handle}'s profile`}
+            >
+              {post.author?.avatar ? (
+                <img
+                  alt={post.author.name}
+                  className="w-10 h-10 rounded-full object-cover shrink-0 shadow-sm group-hover/avatar:opacity-85 transition-opacity"
+                  src={post.author.avatar}
+                />
+              ) : (
+                <div className="w-10 h-10 rounded-full bg-surface-container-high flex items-center justify-center text-primary-container font-headline-md text-headline-md font-extrabold shrink-0 shadow-sm group-hover/avatar:opacity-85 transition-opacity">
+                  {post.author?.initials || "U"}
+                </div>
+              )}
+            </Link>
+          );
+        })()}
 
         <div className="flex-1 min-w-0">
           {/* Metadata / Author */}
           <div className="flex items-center justify-between mb-space-xs">
             <div className="flex items-center gap-space-xs truncate">
-              <span className="font-headline-md text-headline-md text-on-surface group-hover:underline">
-                {post.author.name}
-              </span>
-              {post.author.verified && (
-                <span
-                  className="material-symbols-outlined text-primary-container text-[16px]"
-                  style={{ fontVariationSettings: "'FILL' 1" }}
-                >
-                  verified
+              <Link
+                to={`/profile/${post.author?.handle || post.userId || post.author?.id || ''}`}
+                onClick={(e) => e.stopPropagation()}
+                className="flex items-center gap-space-xs truncate group/author hover:underline cursor-pointer"
+                title={`View @${post.author?.handle}'s profile`}
+              >
+                <span className="font-headline-md text-headline-md text-on-surface">
+                  {post.author?.name}
                 </span>
-              )}
-              <span className="font-body-sm text-body-sm text-outline">
-                @{post.author.handle}
-              </span>
+                {post.author?.verified && (
+                  <span
+                    className="material-symbols-outlined text-primary-container text-[16px]"
+                    style={{ fontVariationSettings: "'FILL' 1" }}
+                  >
+                    verified
+                  </span>
+                )}
+                <span className="font-body-sm text-body-sm text-outline">
+                  @{post.author?.handle}
+                </span>
+              </Link>
               <span className="text-outline">·</span>
               <span className="font-body-sm text-body-sm text-outline hover:underline">
                 {post.time}

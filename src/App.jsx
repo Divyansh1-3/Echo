@@ -19,6 +19,7 @@ export default function App() {
           </ProtectedRoute>
         }
       />
+      <Route path="/profile/:username" element={<ProfilePage />} />
       <Route path="*" element={<Navigate to="/feed" replace />} />
     </Routes>
   );

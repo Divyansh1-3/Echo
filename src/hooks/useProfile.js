@@ -53,9 +53,9 @@ function formatTimeAgo(dateString) {
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
-export function useProfile(customUserId) {
+export function useProfile(identifier) {
   const { user } = useAuth();
-  const targetUserId = customUserId || user?.id;
+  const targetIdentifier = identifier || user?.id;
 
   const [profile, setProfile] = useState(fallbackUser);
   const [posts, setPosts] = useState(fallbackPosts);
@@ -63,131 +63,259 @@ export function useProfile(customUserId) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [isUpdating, setIsUpdating] = useState(false);
+  const [isFollowing, setIsFollowing] = useState(false);
+  const [isFollowLoading, setIsFollowLoading] = useState(false);
+
+  // Check if viewing own profile
+  const isOwnProfile = Boolean(
+    !identifier ||
+    (user?.id && (profile?.id === user.id || identifier === user.id)) ||
+    (user?.user_metadata?.username &&
+      identifier?.toLowerCase().replace(/^@/, '') ===
+        user.user_metadata.username.toLowerCase())
+  );
 
   const fetchProfileData = useCallback(async () => {
     setLoading(true);
     setError(null);
 
-    // If Supabase is unconfigured, fallback gracefully to mock data
-    if (!isSupabaseConfigured) {
+    // If no target user can be determined, show fallback
+    if (!targetIdentifier) {
       setProfile(fallbackUser);
       setPosts(fallbackPosts);
       setLoading(false);
       return;
     }
 
+    const cleanHandle = identifier ? identifier.replace(/^@/, '').toLowerCase() : null;
+
+    // Fallback handler for mock users or when Supabase is unconfigured
+    const handleMockFallback = () => {
+      const matchingPost = initialFeedPosts.find(
+        (p) => p.author?.handle?.toLowerCase() === cleanHandle
+      );
+
+      if (matchingPost) {
+        const mockAuthor = matchingPost.author;
+        setProfile({
+          ...fallbackUser,
+          id: `mock-${mockAuthor.handle}`,
+          name: mockAuthor.name,
+          handle: mockAuthor.handle,
+          avatar: mockAuthor.avatar,
+          bio: `${mockAuthor.name} - Building next-gen software, AI infrastructure, and UI systems.`,
+          isVerified: mockAuthor.verified,
+          followersCount: '14.2K',
+          followingCount: '482',
+          postsCount: String(
+            initialFeedPosts.filter((p) => p.author?.handle === mockAuthor.handle).length || 1
+          ),
+        });
+        setPosts(initialFeedPosts.filter((p) => p.author?.handle === mockAuthor.handle));
+      } else if (cleanHandle && cleanHandle !== 'alexchen') {
+        setProfile({
+          ...fallbackUser,
+          id: `mock-${cleanHandle}`,
+          name: cleanHandle.charAt(0).toUpperCase() + cleanHandle.slice(1),
+          handle: cleanHandle,
+          avatar: fallbackUser.avatar,
+          bio: `Developer & creator sharing insights on X Connect.`,
+          followersCount: '1.2K',
+          followingCount: '320',
+          postsCount: '0',
+        });
+        setPosts([]);
+      } else {
+        setProfile(fallbackUser);
+        setPosts(fallbackPosts);
+      }
+    };
+
+    if (!isSupabaseConfigured) {
+      handleMockFallback();
+      setLoading(false);
+      return;
+    }
+
     try {
-      // 1. Fetch Profile
-      let currentProfile = fallbackUser;
-      if (targetUserId) {
-        const { data: profileData, error: profileError } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', targetUserId)
-          .maybeSingle();
+      // 1. Fetch Profile by UUID or Username from Supabase
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(targetIdentifier);
+      let query = supabase.from('profiles').select('*');
 
-        if (profileError && profileError.code !== 'PGRST116') {
-          console.warn('[useProfile] Error fetching profile:', profileError.message);
-        }
-
-        if (profileData) {
-          currentProfile = {
-            id: profileData.id,
-            name: profileData.full_name || fallbackUser.name,
-            handle: profileData.username || fallbackUser.handle,
-            avatar: profileData.avatar_url || fallbackUser.avatar,
-            coverImage: profileData.cover_url || fallbackUser.coverImage,
-            bio: profileData.bio || fallbackUser.bio,
-            location: profileData.location || fallbackUser.location,
-            website: profileData.website || fallbackUser.website,
-            websiteUrl: profileData.website?.startsWith('http')
-              ? profileData.website
-              : `https://${profileData.website || 'alexchen.dev'}`,
-            pronouns: profileData.pronouns || fallbackUser.pronouns,
-            isVerified: profileData.is_verified ?? true,
-            followersCount: profileData.followers_count
-              ? String(profileData.followers_count)
-              : fallbackUser.followersCount,
-            followingCount: profileData.following_count
-              ? String(profileData.following_count)
-              : fallbackUser.followingCount,
-            postsCount: profileData.posts_count
-              ? String(profileData.posts_count)
-              : fallbackUser.postsCount,
-            joined: profileData.created_at
-              ? `Joined ${new Date(profileData.created_at).toLocaleDateString('en-US', {
-                  month: 'long',
-                  year: 'numeric',
-                })}`
-              : fallbackUser.joined,
-            mutuals: fallbackUser.mutuals,
-          };
-          setProfile(currentProfile);
-        } else if (user?.user_metadata) {
-          // If profile table doesn't have a row yet, synthesize from auth metadata
-          currentProfile = {
-            ...fallbackUser,
-            name: user.user_metadata.full_name || fallbackUser.name,
-            handle:
-              user.user_metadata.username ||
-              (user.email ? user.email.split('@')[0] : fallbackUser.handle),
-            avatar: user.user_metadata.avatar_url || fallbackUser.avatar,
-          };
-          setProfile(currentProfile);
-        }
+      if (isUuid) {
+        query = query.eq('id', targetIdentifier);
+      } else {
+        query = query.ilike('username', cleanHandle || targetIdentifier);
       }
 
-      // 2. Fetch User's Posts from Supabase
-      if (targetUserId) {
+      const { data: profileData, error: profileError } = await query.maybeSingle();
+
+      if (profileError && profileError.code !== 'PGRST116') {
+        console.warn('[useProfile] Error fetching profile:', profileError.message);
+      }
+
+      if (profileData) {
+        const loadedProfile = {
+          id: profileData.id,
+          name: profileData.full_name || fallbackUser.name,
+          handle: profileData.username || fallbackUser.handle,
+          avatar: profileData.avatar_url || fallbackUser.avatar,
+          coverImage: profileData.cover_url || fallbackUser.coverImage,
+          bio: profileData.bio || fallbackUser.bio,
+          location: profileData.location || fallbackUser.location,
+          website: profileData.website || fallbackUser.website,
+          websiteUrl: profileData.website?.startsWith('http')
+            ? profileData.website
+            : `https://${profileData.website || 'alexchen.dev'}`,
+          pronouns: profileData.pronouns || fallbackUser.pronouns,
+          isVerified: profileData.is_verified ?? true,
+          followersCount: typeof profileData.followers_count === 'number'
+            ? String(profileData.followers_count)
+            : fallbackUser.followersCount,
+          followingCount: typeof profileData.following_count === 'number'
+            ? String(profileData.following_count)
+            : fallbackUser.followingCount,
+          postsCount: typeof profileData.posts_count === 'number'
+            ? String(profileData.posts_count)
+            : fallbackUser.postsCount,
+          joined: profileData.created_at
+            ? `Joined ${new Date(profileData.created_at).toLocaleDateString('en-US', {
+                month: 'long',
+                year: 'numeric',
+              })}`
+            : fallbackUser.joined,
+          mutuals: fallbackUser.mutuals,
+        };
+        setProfile(loadedProfile);
+
+        // Check if viewing user follows this profile
+        if (user?.id && user.id !== profileData.id) {
+          const { data: followRecord } = await supabase
+            .from('follows')
+            .select('follower_id')
+            .eq('follower_id', user.id)
+            .eq('following_id', profileData.id)
+            .maybeSingle();
+          setIsFollowing(Boolean(followRecord));
+        } else {
+          setIsFollowing(false);
+        }
+
+        // 2. Fetch User's Posts from Supabase
         const { data: userPostsData, error: userPostsError } = await supabase
           .from('posts')
-          .select(
-            `*, profiles:user_id(username, full_name, avatar_url, is_verified)`
-          )
-          .eq('user_id', targetUserId)
+          .select(`*, profiles:user_id(username, full_name, avatar_url, is_verified)`)
+          .eq('user_id', profileData.id)
           .order('created_at', { ascending: false });
 
         if (userPostsError) {
           console.warn('[useProfile] Error fetching user posts:', userPostsError.message);
-          setPosts(fallbackPosts);
+          setPosts([]);
         } else if (userPostsData && userPostsData.length > 0) {
           setPosts(userPostsData.map(mapDbRowToPost));
         } else {
-          setPosts(fallbackPosts);
+          setPosts([]);
         }
 
         // 3. Fetch User's Liked Posts
-        const { data: userLikesData, error: userLikesError } = await supabase
+        const { data: userLikesData } = await supabase
           .from('likes')
-          .select(
-            `post:post_id(*, profiles:user_id(username, full_name, avatar_url, is_verified))`
-          )
-          .eq('user_id', targetUserId)
+          .select(`post:post_id(*, profiles:user_id(username, full_name, avatar_url, is_verified))`)
+          .eq('user_id', profileData.id)
           .order('created_at', { ascending: false });
 
-        if (!userLikesError && userLikesData) {
+        if (userLikesData && userLikesData.length > 0) {
           const liked = userLikesData
             .map((item) => item.post)
             .filter(Boolean)
             .map(mapDbRowToPost);
           setLikedPosts(liked);
+        } else {
+          setLikedPosts([]);
         }
+      } else if (user?.user_metadata && (!identifier || identifier === user.id)) {
+        // Authenticated user with no profile record yet
+        setProfile({
+          ...fallbackUser,
+          id: user.id,
+          name: user.user_metadata.full_name || fallbackUser.name,
+          handle:
+            user.user_metadata.username ||
+            (user.email ? user.email.split('@')[0] : fallbackUser.handle),
+          avatar: user.user_metadata.avatar_url || fallbackUser.avatar,
+        });
+        setPosts([]);
       } else {
-        setPosts(fallbackPosts);
+        // Mock fallback for requested username
+        handleMockFallback();
       }
     } catch (err) {
       console.error('[useProfile] Unexpected error:', err);
       setError(err.message || 'Failed to load profile');
-      setProfile(fallbackUser);
-      setPosts(fallbackPosts);
+      handleMockFallback();
     } finally {
       setLoading(false);
     }
-  }, [targetUserId, user]);
+  }, [targetIdentifier, identifier, user]);
 
   useEffect(() => {
     fetchProfileData();
   }, [fetchProfileData]);
+
+  /**
+   * Follow / Unfollow User in Supabase
+   */
+  const toggleFollow = async () => {
+    if (!user?.id) {
+      return { requiresAuth: true };
+    }
+
+    if (!profile?.id) return { success: false };
+
+    setIsFollowLoading(true);
+    const previousFollowing = isFollowing;
+    const previousCount = profile.followersCount;
+
+    // Optimistic UI update
+    setIsFollowing(!previousFollowing);
+    setProfile((prev) => {
+      const current = parseInt(String(prev.followersCount).replace(/[^0-9]/g, '') || '0', 10);
+      const next = previousFollowing ? Math.max(current - 1, 0) : current + 1;
+      return { ...prev, followersCount: String(next) };
+    });
+
+    if (!isSupabaseConfigured) {
+      setIsFollowLoading(false);
+      return { success: true };
+    }
+
+    try {
+      if (previousFollowing) {
+        // Unfollow
+        const { error: unfollowError } = await supabase
+          .from('follows')
+          .delete()
+          .eq('follower_id', user.id)
+          .eq('following_id', profile.id);
+        if (unfollowError) throw unfollowError;
+      } else {
+        // Follow
+        const { error: followError } = await supabase
+          .from('follows')
+          .insert([{ follower_id: user.id, following_id: profile.id }]);
+        if (followError && followError.code !== '23505') throw followError;
+      }
+      return { success: true };
+    } catch (err) {
+      console.error('[useProfile] Failed to toggle follow:', err);
+      // Rollback
+      setIsFollowing(previousFollowing);
+      setProfile((prev) => ({ ...prev, followersCount: previousCount }));
+      throw err;
+    } finally {
+      setIsFollowLoading(false);
+    }
+  };
 
   /**
    * Update Profile in Supabase
@@ -265,6 +393,10 @@ export function useProfile(customUserId) {
     loading,
     error,
     isUpdating,
+    isOwnProfile,
+    isFollowing,
+    isFollowLoading,
+    toggleFollow,
     updateProfile,
     refetch: fetchProfileData,
     clearError,

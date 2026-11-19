@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { trendingTopics, whoToFollowUsers } from '../data/mockData';
 
 export default function RightSidebar() {
@@ -60,21 +61,25 @@ export default function RightSidebar() {
             const isFollowing = followingMap[user.id];
             return (
               <div key={user.id} className="flex items-center justify-between">
-                <div className="flex items-center gap-space-sm">
+                <Link
+                  to={`/profile/${user.handle}`}
+                  className="flex items-center gap-space-sm group/user hover:opacity-90 transition-opacity truncate mr-2"
+                  title={`View @${user.handle}'s profile`}
+                >
                   <div
-                    className={`w-10 h-10 rounded-full bg-surface-container-high flex items-center justify-center font-bold ${user.color}`}
+                    className={`w-10 h-10 rounded-full bg-surface-container-high flex items-center justify-center font-bold shrink-0 ${user.color}`}
                   >
                     {user.initials}
                   </div>
-                  <div className="flex flex-col leading-tight">
-                    <span className="font-label-lg text-label-lg text-on-surface font-bold hover:underline cursor-pointer">
+                  <div className="flex flex-col leading-tight truncate">
+                    <span className="font-label-lg text-label-lg text-on-surface font-bold group-hover/user:underline truncate">
                       {user.name}
                     </span>
-                    <span className="font-body-sm text-body-sm text-outline">
+                    <span className="font-body-sm text-body-sm text-outline truncate">
                       @{user.handle}
                     </span>
                   </div>
-                </div>
+                </Link>
                 <button
                   onClick={() => toggleFollow(user.id)}
                   className={`px-space-md py-space-xs rounded-full font-label-md text-label-md font-bold transition-colors ${

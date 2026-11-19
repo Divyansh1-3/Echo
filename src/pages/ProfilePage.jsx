@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import Layout from '../components/Layout';
 import PostCard from '../components/PostCard';
 import useProfile from '../hooks/useProfile';
@@ -7,6 +7,10 @@ import usePosts from '../hooks/usePosts';
 
 export default function ProfilePage() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const { username, userId } = useParams();
+  const profileIdentifier = username || userId;
+
   const {
     profile,
     posts: profilePostsList,
@@ -14,10 +18,14 @@ export default function ProfilePage() {
     loading,
     error,
     isUpdating,
+    isOwnProfile,
+    isFollowing,
+    isFollowLoading,
+    toggleFollow,
     updateProfile,
     refetch,
     clearError,
-  } = useProfile();
+  } = useProfile(profileIdentifier);
 
   const { createPost } = usePosts();
 
@@ -53,6 +61,17 @@ export default function ProfilePage() {
       setIsEditModalOpen(false);
     } catch (err) {
       console.error('[ProfilePage] Failed to save profile:', err);
+    }
+  };
+
+  const handleToggleFollow = async () => {
+    try {
+      const res = await toggleFollow();
+      if (res?.requiresAuth) {
+        navigate('/login', { state: { from: location } });
+      }
+    } catch (err) {
+      console.error('[ProfilePage] Toggle follow error:', err);
     }
   };
 
@@ -192,12 +211,34 @@ export default function ProfilePage() {
                       notifications_none
                     </span>
                   </button>
-                  <button
-                    onClick={openEditModal}
-                    className="px-space-lg py-space-xs rounded-full bg-on-surface hover:bg-inverse-surface text-surface font-label-md text-label-md transition-all font-bold cursor-pointer"
-                  >
-                    Edit profile
-                  </button>
+                  {isOwnProfile ? (
+                    <button
+                      onClick={openEditModal}
+                      className="px-space-lg py-space-xs rounded-full bg-on-surface hover:bg-inverse-surface text-surface font-label-md text-label-md transition-all font-bold cursor-pointer"
+                    >
+                      Edit profile
+                    </button>
+                  ) : (
+                    <button
+                      onClick={handleToggleFollow}
+                      disabled={isFollowLoading}
+                      className={`px-space-lg py-space-xs rounded-full font-label-md text-label-md transition-all font-bold cursor-pointer flex items-center justify-center gap-1.5 min-w-[100px] ${
+                        isFollowing
+                          ? "bg-transparent border border-outline text-on-surface hover:bg-error-container/20 hover:text-error hover:border-error"
+                          : "bg-on-surface hover:bg-inverse-surface text-surface"
+                      }`}
+                    >
+                      {isFollowLoading ? (
+                        <span className="material-symbols-outlined animate-spin text-[16px]">
+                          progress_activity
+                        </span>
+                      ) : isFollowing ? (
+                        "Following"
+                      ) : (
+                        "Follow"
+                      )}
+                    </button>
+                  )}
                 </div>
               </div>
 
