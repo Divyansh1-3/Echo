@@ -20,6 +20,7 @@ export default function App() {
         }
       />
       <Route path="/profile/:username" element={<ProfilePage />} />
+      <Route path="/profile/id/:userId" element={<ProfilePage />} />
       <Route path="*" element={<Navigate to="/feed" replace />} />
     </Routes>
   );

@@ -28,12 +28,22 @@ function formatTimeAgo(dateString) {
  */
 function mapDbRowToPost(row) {
   const authorProfile = row.profiles || {};
+  const authorId = row.user_id || authorProfile.id || null;
+  const authorHandle = authorProfile.username || row.author_handle || (authorId ? `user_${String(authorId).slice(0, 8)}` : 'user');
+  const authorName = authorProfile.full_name || row.author_name || authorHandle || 'Anonymous';
+  const authorAvatar =
+    authorProfile.avatar_url ||
+    row.author_avatar ||
+    `https://api.dicebear.com/7.x/identicon/svg?seed=${authorHandle}`;
+
   return {
     id: row.id,
+    userId: authorId,
     author: {
-      name: authorProfile.full_name || row.author_name || 'Anonymous',
-      handle: authorProfile.username || row.author_handle || 'user',
-      avatar: authorProfile.avatar_url || row.author_avatar || fallbackUser.avatar,
+      id: authorId,
+      name: authorName,
+      handle: String(authorHandle).replace(/^@/, ''),
+      avatar: authorAvatar,
       verified: authorProfile.is_verified ?? Boolean(row.author_verified),
     },
     time: formatTimeAgo(row.created_at),

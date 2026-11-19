@@ -43,12 +43,13 @@ export default function ProfilePage() {
   });
 
   const openEditModal = () => {
+    if (!profile) return;
     setEditForm({
       name: profile.name || '',
       bio: profile.bio || '',
       location: profile.location || '',
       website: profile.website || '',
-      pronouns: profile.pronouns || 'he/him',
+      pronouns: profile.pronouns || '',
       avatar: profile.avatar || '',
     });
     setIsEditModalOpen(true);
@@ -114,9 +115,9 @@ export default function ProfilePage() {
           <div className="flex flex-col min-w-0">
             <div className="flex items-center gap-space-xs">
               <h1 className="font-headline-md text-headline-md text-on-surface truncate font-bold">
-                {profile.name}
+                {profile?.name || (loading ? 'Loading...' : 'Profile')}
               </h1>
-              {profile.isVerified !== false && (
+              {profile?.isVerified && (
                 <span
                   className="material-symbols-outlined text-primary-container text-[18px]"
                   style={{ fontVariationSettings: "'FILL' 1" }}
@@ -126,13 +127,13 @@ export default function ProfilePage() {
               )}
             </div>
             <span className="font-body-sm text-body-sm text-outline">
-              {profile.postsCount} posts
+              {profile?.postsCount || 0} posts
             </span>
           </div>
         </header>
 
         {/* Global Error Banner */}
-        {error && (
+        {error && error !== "This account doesn't exist" && (
           <div className="mx-space-lg my-space-sm p-3.5 rounded-2xl bg-error-container/30 border border-error/40 flex items-center justify-between text-body-sm text-error">
             <div className="flex items-center gap-2">
               <span className="material-symbols-outlined text-[18px]">error</span>
@@ -141,13 +142,13 @@ export default function ProfilePage() {
             <div className="flex items-center gap-2">
               <button
                 onClick={refetch}
-                className="underline hover:opacity-80 font-semibold"
+                className="underline hover:opacity-80 font-semibold cursor-pointer"
               >
                 Retry
               </button>
               <button
                 onClick={clearError}
-                className="hover:opacity-80 p-1"
+                className="hover:opacity-80 p-1 cursor-pointer"
                 title="Dismiss"
               >
                 <span className="material-symbols-outlined text-[16px]">close</span>
@@ -168,6 +169,25 @@ export default function ProfilePage() {
               <div className="mt-2 h-4 w-28 bg-surface-container-high rounded"></div>
               <div className="mt-4 h-12 w-full bg-surface-container-high rounded-xl"></div>
             </div>
+          </div>
+        ) : !profile ? (
+          /* Account Not Found State */
+          <div className="flex flex-col items-center justify-center min-h-[50vh] p-8 text-center bg-surface">
+            <div className="w-16 h-16 rounded-full bg-surface-container-high flex items-center justify-center text-outline mb-4">
+              <span className="material-symbols-outlined text-[32px]">person_off</span>
+            </div>
+            <h2 className="font-headline-lg text-headline-lg font-bold text-on-surface mb-2">
+              This account doesn’t exist
+            </h2>
+            <p className="font-body-md text-body-md text-outline max-w-sm mb-6">
+              Try searching for another. The user you are looking for might have been deleted or the handle may be incorrect.
+            </p>
+            <button
+              onClick={() => navigate('/feed')}
+              className="px-6 py-2.5 rounded-full bg-on-surface text-surface font-label-md text-label-md font-bold hover:bg-inverse-surface transition-colors cursor-pointer"
+            >
+              Go to Feed
+            </button>
           </div>
         ) : (
           <>
@@ -191,6 +211,9 @@ export default function ProfilePage() {
                       alt={profile.name}
                       className="w-full h-full rounded-full object-cover"
                       src={profile.avatar}
+                      onError={(e) => {
+                        e.currentTarget.src = `https://api.dicebear.com/7.x/identicon/svg?seed=${profile.handle || 'user'}`;
+                      }}
                     />
                   </div>
                 </div>
@@ -248,7 +271,7 @@ export default function ProfilePage() {
                   <h2 className="font-headline-lg text-headline-lg text-on-surface font-bold">
                     {profile.name}
                   </h2>
-                  {profile.isVerified !== false && (
+                  {profile.isVerified && (
                     <span
                       className="material-symbols-outlined text-primary-container text-[20px]"
                       style={{ fontVariationSettings: "'FILL' 1" }}
@@ -256,126 +279,127 @@ export default function ProfilePage() {
                       verified
                     </span>
                   )}
-                  <span className="px-space-xs py-0.5 rounded-md bg-surface-container-high font-label-sm text-label-sm text-outline">
-                    {profile.pronouns}
-                  </span>
+                  {profile.pronouns && (
+                    <span className="px-space-xs py-0.5 rounded-md bg-surface-container-high font-label-sm text-label-sm text-outline">
+                      {profile.pronouns}
+                    </span>
+                  )}
                 </div>
                 <span className="font-body-md text-body-md text-outline">
                   @{profile.handle}
                 </span>
               </div>
 
-              <p className="mt-space-md font-body-md text-body-md text-on-surface leading-relaxed">
-                {profile.bio}
-              </p>
+              {profile.bio && (
+                <p className="mt-space-md font-body-md text-body-md text-on-surface leading-relaxed">
+                  {profile.bio}
+                </p>
+              )}
 
               {/* Metadata Details */}
               <div className="mt-space-md flex flex-wrap gap-x-space-lg gap-y-space-xs text-outline font-body-sm text-body-sm">
-                <div className="flex items-center gap-space-xs">
-                  <span className="material-symbols-outlined text-[17px]">location_on</span>
-                  <span>{profile.location}</span>
-                </div>
-                <div className="flex items-center gap-space-xs">
-                  <span className="material-symbols-outlined text-[17px]">link</span>
-                  <a
-                    className="text-primary hover:underline"
-                    href={profile.websiteUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    {profile.website}
-                  </a>
-                </div>
-                <div className="flex items-center gap-space-xs">
-                  <span className="material-symbols-outlined text-[17px]">calendar_month</span>
-                  <span>{profile.joined}</span>
-                </div>
+                {profile.location && (
+                  <div className="flex items-center gap-space-xs">
+                    <span className="material-symbols-outlined text-[17px]">location_on</span>
+                    <span>{profile.location}</span>
+                  </div>
+                )}
+                {profile.website && (
+                  <div className="flex items-center gap-space-xs">
+                    <span className="material-symbols-outlined text-[17px]">link</span>
+                    <a
+                      className="text-primary hover:underline"
+                      href={profile.websiteUrl || (profile.website.startsWith('http') ? profile.website : `https://${profile.website}`)}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      {profile.website.replace(/^https?:\/\//, '')}
+                    </a>
+                  </div>
+                )}
+                {profile.joined && (
+                  <div className="flex items-center gap-space-xs">
+                    <span className="material-symbols-outlined text-[17px]">calendar_month</span>
+                    <span>{profile.joined}</span>
+                  </div>
+                )}
               </div>
 
               {/* Follow Metrics */}
               <div className="mt-space-md flex items-center gap-space-lg font-body-sm text-body-sm">
-                <a className="hover:underline flex items-center gap-space-xs" href="#">
+                <div className="flex items-center gap-space-xs">
                   <span className="font-label-md text-label-md text-on-surface font-bold">
                     {profile.followingCount}
                   </span>
                   <span className="text-outline">Following</span>
-                </a>
-                <a className="hover:underline flex items-center gap-space-xs" href="#">
+                </div>
+                <div className="flex items-center gap-space-xs">
                   <span className="font-label-md text-label-md text-on-surface font-bold">
                     {profile.followersCount}
                   </span>
                   <span className="text-outline">Followers</span>
-                </a>
+                </div>
               </div>
 
-              {/* Mutual Network Context */}
-              <div className="mt-space-md flex items-center gap-space-sm pt-space-xs">
-                <div className="flex -space-x-2 shrink-0">
-                  <div className="w-5 h-5 rounded-full ring-2 ring-surface bg-surface-container-highest flex items-center justify-center text-[9px] font-bold text-secondary">
-                    SJ
+              {/* Optional Mutual Network Context (rendered only if mutual info is available) */}
+              {profile.mutuals && profile.mutuals.length > 0 && (
+                <div className="mt-space-md flex items-center gap-space-sm pt-space-xs">
+                  <div className="flex -space-x-2 shrink-0">
+                    <div className="w-5 h-5 rounded-full ring-2 ring-surface bg-surface-container-highest flex items-center justify-center text-[9px] font-bold text-secondary">
+                      U1
+                    </div>
+                    <div className="w-5 h-5 rounded-full ring-2 ring-surface bg-surface-container-high flex items-center justify-center text-[9px] font-bold text-tertiary">
+                      U2
+                    </div>
                   </div>
-                  <div className="w-5 h-5 rounded-full ring-2 ring-surface bg-surface-container-high flex items-center justify-center text-[9px] font-bold text-tertiary">
-                    ER
-                  </div>
-                  <div className="w-5 h-5 rounded-full ring-2 ring-surface bg-primary-container flex items-center justify-center text-[9px] font-bold text-on-primary-container">
-                    +42
-                  </div>
+                  <p className="font-label-sm text-label-sm text-outline truncate">
+                    Followed by people you know
+                  </p>
                 </div>
-                <p className="font-label-sm text-label-sm text-outline truncate">
-                  Followed by{' '}
-                  <span className="text-on-surface hover:underline cursor-pointer">
-                    Sarah Jenkins
-                  </span>
-                  ,{' '}
-                  <span className="text-on-surface hover:underline cursor-pointer">
-                    Elena Rostova
-                  </span>
-                  , and 42 others you follow
-                </p>
-              </div>
+              )}
+            </div>
+
+            {/* Profile Content Tabs */}
+            <nav className="flex w-full bg-surface/90 backdrop-blur-md sticky top-14 z-10 border-b border-surface-container-high/40">
+              {tabs.map((tab) => {
+                const isActive = activeTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    className={`flex-1 flex flex-col items-center justify-center pt-space-md px-space-sm hover:bg-surface-container-high/20 transition-colors cursor-pointer group ${
+                      isActive ? 'text-on-surface font-bold' : 'text-outline'
+                    }`}
+                    onClick={() => setActiveTab(tab.id)}
+                  >
+                    <div className="flex items-center pb-space-sm relative">
+                      <span
+                        className={`font-label-lg text-label-lg ${
+                          !isActive ? 'group-hover:text-on-surface transition-colors' : ''
+                        }`}
+                      >
+                        {tab.label}
+                      </span>
+                      {isActive && (
+                        <div className="tab-indicator absolute bottom-0 inset-x-0 h-1 bg-primary-container rounded-full" />
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+            </nav>
+
+            {/* Feed Section */}
+            <div className="flex flex-col w-full bg-surface">
+              {displayedPosts.length > 0 ? (
+                displayedPosts.map((post) => <PostCard key={post.id} post={post} />)
+              ) : (
+                <div className="p-12 text-center text-outline font-body-md">
+                  No {activeTab} yet.
+                </div>
+              )}
             </div>
           </>
         )}
-
-        {/* Profile Content Tabs */}
-        <nav className="flex w-full bg-surface/90 backdrop-blur-md sticky top-14 z-10 border-b border-surface-container-high/40">
-          {tabs.map((tab) => {
-            const isActive = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                className={`flex-1 flex flex-col items-center justify-center pt-space-md px-space-sm hover:bg-surface-container-high/20 transition-colors cursor-pointer group ${
-                  isActive ? 'text-on-surface font-bold' : 'text-outline'
-                }`}
-                onClick={() => setActiveTab(tab.id)}
-              >
-                <div className="flex items-center pb-space-sm relative">
-                  <span
-                    className={`font-label-lg text-label-lg ${
-                      !isActive ? 'group-hover:text-on-surface transition-colors' : ''
-                    }`}
-                  >
-                    {tab.label}
-                  </span>
-                  {isActive && (
-                    <div className="tab-indicator absolute bottom-0 inset-x-0 h-1 bg-primary-container rounded-full" />
-                  )}
-                </div>
-              </button>
-            );
-          })}
-        </nav>
-
-        {/* Feed Section */}
-        <div className="flex flex-col w-full bg-surface">
-          {displayedPosts.length > 0 ? (
-            displayedPosts.map((post) => <PostCard key={post.id} post={post} />)
-          ) : (
-            <div className="p-12 text-center text-outline font-body-md">
-              No {activeTab} yet.
-            </div>
-          )}
-        </div>
       </div>
 
       {/* Edit Profile Modal */}
@@ -392,7 +416,7 @@ export default function ProfilePage() {
               <div className="flex items-center gap-space-md">
                 <button
                   onClick={() => setIsEditModalOpen(false)}
-                  className="w-8 h-8 rounded-full flex items-center justify-center text-on-surface hover:bg-surface-container-high transition-colors"
+                  className="w-8 h-8 rounded-full flex items-center justify-center text-on-surface hover:bg-surface-container-high transition-colors cursor-pointer"
                   type="button"
                 >
                   <span className="material-symbols-outlined text-[20px]">close</span>
@@ -404,7 +428,7 @@ export default function ProfilePage() {
               <button
                 onClick={handleSaveProfile}
                 disabled={isUpdating}
-                className="px-space-lg py-1.5 rounded-full bg-on-surface text-surface font-label-md text-label-md font-bold hover:bg-inverse-surface transition-colors disabled:opacity-50 flex items-center gap-1.5"
+                className="px-space-lg py-1.5 rounded-full bg-on-surface text-surface font-label-md text-label-md font-bold hover:bg-inverse-surface transition-colors disabled:opacity-50 flex items-center gap-1.5 cursor-pointer"
                 type="button"
               >
                 {isUpdating && (

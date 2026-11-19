@@ -1,16 +1,48 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
-import { currentUser as fallbackUser, profilePosts as fallbackPosts } from '../data/mockData';
 import { useAuth } from '../context/AuthContext';
 
+/**
+ * Format timestamp into human-readable relative string
+ */
+function formatTimeAgo(dateString) {
+  if (!dateString) return 'Just now';
+  const date = new Date(dateString);
+  const now = new Date();
+  const diffInSeconds = Math.floor((now - date) / 1000);
+
+  if (diffInSeconds < 60) return 'Just now';
+  const diffInMinutes = Math.floor(diffInSeconds / 60);
+  if (diffInMinutes < 60) return `${diffInMinutes}m`;
+  const diffInHours = Math.floor(diffInMinutes / 60);
+  if (diffInHours < 24) return `${diffInHours}h`;
+  const diffInDays = Math.floor(diffInHours / 24);
+  if (diffInDays < 7) return `${diffInDays}d`;
+
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+/**
+ * Maps Supabase post row to UI post model
+ */
 function mapDbRowToPost(row) {
   const authorProfile = row.profiles || {};
+  const authorId = row.user_id || authorProfile.id || null;
+  const authorHandle = authorProfile.username || row.author_handle || (authorId ? `user_${String(authorId).slice(0, 8)}` : 'user');
+  const authorName = authorProfile.full_name || row.author_name || authorHandle || 'Anonymous';
+  const authorAvatar =
+    authorProfile.avatar_url ||
+    row.author_avatar ||
+    `https://api.dicebear.com/7.x/identicon/svg?seed=${authorHandle}`;
+
   return {
     id: row.id,
+    userId: authorId,
     author: {
-      name: authorProfile.full_name || row.author_name || fallbackUser.name,
-      handle: authorProfile.username || row.author_handle || fallbackUser.handle,
-      avatar: authorProfile.avatar_url || row.author_avatar || fallbackUser.avatar,
+      id: authorId,
+      name: authorName,
+      handle: String(authorHandle).replace(/^@/, ''),
+      avatar: authorAvatar,
       verified: authorProfile.is_verified ?? Boolean(row.author_verified),
     },
     time: formatTimeAgo(row.created_at),
@@ -36,29 +68,12 @@ function mapDbRowToPost(row) {
   };
 }
 
-function formatTimeAgo(dateString) {
-  if (!dateString) return 'Just now';
-  const date = new Date(dateString);
-  const now = new Date();
-  const diffInSeconds = Math.floor((now - date) / 1000);
-
-  if (diffInSeconds < 60) return 'Just now';
-  const diffInMinutes = Math.floor(diffInSeconds / 60);
-  if (diffInMinutes < 60) return `${diffInMinutes}m`;
-  const diffInHours = Math.floor(diffInMinutes / 60);
-  if (diffInHours < 24) return `${diffInHours}h`;
-  const diffInDays = Math.floor(diffInHours / 24);
-  if (diffInDays < 7) return `${diffInDays}d`;
-
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-}
-
 export function useProfile(identifier) {
   const { user } = useAuth();
   const targetIdentifier = identifier || user?.id;
 
-  const [profile, setProfile] = useState(fallbackUser);
-  const [posts, setPosts] = useState(fallbackPosts);
+  const [profile, setProfile] = useState(null);
+  const [posts, setPosts] = useState([]);
   const [likedPosts, setLikedPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -68,138 +83,131 @@ export function useProfile(identifier) {
 
   // Check if viewing own profile
   const isOwnProfile = Boolean(
-    !identifier ||
-    (user?.id && (profile?.id === user.id || identifier === user.id)) ||
-    (user?.user_metadata?.username &&
-      identifier?.toLowerCase().replace(/^@/, '') ===
-        user.user_metadata.username.toLowerCase())
+    user?.id && (
+      !identifier ||
+      (profile?.id && profile.id === user.id) ||
+      identifier === user.id ||
+      (user.user_metadata?.username &&
+        identifier?.toLowerCase().replace(/^@/, '') === user.user_metadata.username.toLowerCase())
+    )
   );
 
   const fetchProfileData = useCallback(async () => {
     setLoading(true);
     setError(null);
 
-    // If no target user can be determined, show fallback
+    // If no target user can be determined
     if (!targetIdentifier) {
-      setProfile(fallbackUser);
-      setPosts(fallbackPosts);
+      setProfile(null);
+      setPosts([]);
+      setLikedPosts([]);
       setLoading(false);
       return;
     }
 
-    const cleanHandle = identifier ? identifier.replace(/^@/, '').toLowerCase() : null;
+    const cleanTarget = targetIdentifier.trim().replace(/^@/, '');
 
-    // Fallback handler for mock users or when Supabase is unconfigured
-    const handleMockFallback = () => {
-      const matchingPost = initialFeedPosts.find(
-        (p) => p.author?.handle?.toLowerCase() === cleanHandle
-      );
-
-      if (matchingPost) {
-        const mockAuthor = matchingPost.author;
-        setProfile({
-          ...fallbackUser,
-          id: `mock-${mockAuthor.handle}`,
-          name: mockAuthor.name,
-          handle: mockAuthor.handle,
-          avatar: mockAuthor.avatar,
-          bio: `${mockAuthor.name} - Building next-gen software, AI infrastructure, and UI systems.`,
-          isVerified: mockAuthor.verified,
-          followersCount: '14.2K',
-          followingCount: '482',
-          postsCount: String(
-            initialFeedPosts.filter((p) => p.author?.handle === mockAuthor.handle).length || 1
-          ),
-        });
-        setPosts(initialFeedPosts.filter((p) => p.author?.handle === mockAuthor.handle));
-      } else if (cleanHandle && cleanHandle !== 'alexchen') {
-        setProfile({
-          ...fallbackUser,
-          id: `mock-${cleanHandle}`,
-          name: cleanHandle.charAt(0).toUpperCase() + cleanHandle.slice(1),
-          handle: cleanHandle,
-          avatar: fallbackUser.avatar,
-          bio: `Developer & creator sharing insights on X Connect.`,
-          followersCount: '1.2K',
-          followingCount: '320',
-          postsCount: '0',
-        });
-        setPosts([]);
-      } else {
-        setProfile(fallbackUser);
-        setPosts(fallbackPosts);
-      }
+    // Fallback handler when Supabase is not configured
+    const handleUnconfiguredFallback = () => {
+      const handle = cleanTarget || 'user';
+      const name = handle.charAt(0).toUpperCase() + handle.slice(1);
+      setProfile({
+        id: `local-${handle}`,
+        name,
+        handle,
+        avatar: `https://api.dicebear.com/7.x/identicon/svg?seed=${handle}`,
+        coverImage: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=1200&q=80',
+        bio: `Building next-gen systems and sharing updates on X Connect.`,
+        location: 'Global',
+        website: `${handle}.dev`,
+        websiteUrl: `https://${handle}.dev`,
+        pronouns: 'they/them',
+        isVerified: false,
+        followersCount: '0',
+        followingCount: '0',
+        postsCount: '0',
+        joined: 'Joined recently',
+      });
+      setPosts([]);
+      setLikedPosts([]);
+      setLoading(false);
     };
 
     if (!isSupabaseConfigured) {
-      handleMockFallback();
-      setLoading(false);
+      handleUnconfiguredFallback();
       return;
     }
 
     try {
       // 1. Fetch Profile by UUID or Username from Supabase
-      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(targetIdentifier);
-      let query = supabase.from('profiles').select('*');
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cleanTarget);
+      let profileData = null;
 
       if (isUuid) {
-        query = query.eq('id', targetIdentifier);
+        const { data, error: profileError } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', cleanTarget)
+          .maybeSingle();
+
+        if (profileError && profileError.code !== 'PGRST116') {
+          console.warn('[useProfile] Error fetching profile by ID:', profileError.message);
+        }
+        profileData = data;
       } else {
-        query = query.ilike('username', cleanHandle || targetIdentifier);
-      }
+        const { data, error: profileError } = await supabase
+          .from('profiles')
+          .select('*')
+          .ilike('username', cleanTarget)
+          .maybeSingle();
 
-      const { data: profileData, error: profileError } = await query.maybeSingle();
+        if (profileError && profileError.code !== 'PGRST116') {
+          console.warn('[useProfile] Error fetching profile by username:', profileError.message);
+        }
+        profileData = data;
 
-      if (profileError && profileError.code !== 'PGRST116') {
-        console.warn('[useProfile] Error fetching profile:', profileError.message);
+        // If not found by username, try querying by id as fallback
+        if (!profileData) {
+          const { data: idData } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', cleanTarget)
+            .maybeSingle();
+          profileData = idData;
+        }
       }
 
       if (profileData) {
         const loadedProfile = {
           id: profileData.id,
-          name: profileData.full_name || fallbackUser.name,
-          handle: profileData.username || fallbackUser.handle,
-          avatar: profileData.avatar_url || fallbackUser.avatar,
-          coverImage: profileData.cover_url || fallbackUser.coverImage,
-          bio: profileData.bio || fallbackUser.bio,
-          location: profileData.location || fallbackUser.location,
-          website: profileData.website || fallbackUser.website,
-          websiteUrl: profileData.website?.startsWith('http')
-            ? profileData.website
-            : `https://${profileData.website || 'alexchen.dev'}`,
-          pronouns: profileData.pronouns || fallbackUser.pronouns,
-          isVerified: profileData.is_verified ?? true,
+          name: profileData.full_name || profileData.username || 'Anonymous',
+          handle: profileData.username || (profileData.id ? `user_${profileData.id.slice(0, 8)}` : 'user'),
+          avatar: profileData.avatar_url || `https://api.dicebear.com/7.x/identicon/svg?seed=${profileData.username || profileData.id}`,
+          coverImage: profileData.cover_url || 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=1200&q=80',
+          bio: profileData.bio || '',
+          location: profileData.location || '',
+          website: profileData.website || '',
+          websiteUrl: profileData.website
+            ? (profileData.website.startsWith('http') ? profileData.website : `https://${profileData.website}`)
+            : '',
+          pronouns: profileData.pronouns || '',
+          isVerified: Boolean(profileData.is_verified),
           followersCount: typeof profileData.followers_count === 'number'
             ? String(profileData.followers_count)
-            : fallbackUser.followersCount,
+            : '0',
           followingCount: typeof profileData.following_count === 'number'
             ? String(profileData.following_count)
-            : fallbackUser.followingCount,
+            : '0',
           postsCount: typeof profileData.posts_count === 'number'
             ? String(profileData.posts_count)
-            : fallbackUser.postsCount,
+            : '0',
           joined: profileData.created_at
             ? `Joined ${new Date(profileData.created_at).toLocaleDateString('en-US', {
                 month: 'long',
                 year: 'numeric',
               })}`
-            : fallbackUser.joined,
-          mutuals: fallbackUser.mutuals,
+            : 'Joined recently',
         };
-        setProfile(loadedProfile);
-
-        // Check if viewing user follows this profile
-        if (user?.id && user.id !== profileData.id) {
-          const { data: followRecord } = await supabase
-            .from('follows')
-            .select('follower_id')
-            .eq('follower_id', user.id)
-            .eq('following_id', profileData.id)
-            .maybeSingle();
-          setIsFollowing(Boolean(followRecord));
-        } else {
-          setIsFollowing(false);
-        }
 
         // 2. Fetch User's Posts from Supabase
         const { data: userPostsData, error: userPostsError } = await supabase
@@ -212,12 +220,16 @@ export function useProfile(identifier) {
           console.warn('[useProfile] Error fetching user posts:', userPostsError.message);
           setPosts([]);
         } else if (userPostsData && userPostsData.length > 0) {
-          setPosts(userPostsData.map(mapDbRowToPost));
+          const mapped = userPostsData.map(mapDbRowToPost);
+          setPosts(mapped);
+          if (!profileData.posts_count) {
+            loadedProfile.postsCount = String(mapped.length);
+          }
         } else {
           setPosts([]);
         }
 
-        // 3. Fetch User's Liked Posts
+        // 3. Fetch User's Liked Posts from Supabase
         const { data: userLikesData } = await supabase
           .from('likes')
           .select(`post:post_id(*, profiles:user_id(username, full_name, avatar_url, is_verified))`)
@@ -233,26 +245,60 @@ export function useProfile(identifier) {
         } else {
           setLikedPosts([]);
         }
-      } else if (user?.user_metadata && (!identifier || identifier === user.id)) {
-        // Authenticated user with no profile record yet
-        setProfile({
-          ...fallbackUser,
+
+        // 4. Check if viewing user follows this profile
+        if (user?.id && user.id !== profileData.id) {
+          const { data: followRecord } = await supabase
+            .from('follows')
+            .select('follower_id')
+            .eq('follower_id', user.id)
+            .eq('following_id', profileData.id)
+            .maybeSingle();
+          setIsFollowing(Boolean(followRecord));
+        } else {
+          setIsFollowing(false);
+        }
+
+        setProfile(loadedProfile);
+      } else if (user?.id && (!identifier || identifier === user.id || cleanTarget.toLowerCase() === user.user_metadata?.username?.toLowerCase())) {
+        // Authenticated user with no profile record in DB yet
+        const authName = user.user_metadata?.full_name || user.email?.split('@')[0] || 'User';
+        const authHandle = user.user_metadata?.username || (user.email ? user.email.split('@')[0] : 'user');
+        const synthesizedProfile = {
           id: user.id,
-          name: user.user_metadata.full_name || fallbackUser.name,
-          handle:
-            user.user_metadata.username ||
-            (user.email ? user.email.split('@')[0] : fallbackUser.handle),
-          avatar: user.user_metadata.avatar_url || fallbackUser.avatar,
-        });
+          name: authName,
+          handle: authHandle,
+          avatar: user.user_metadata?.avatar_url || `https://api.dicebear.com/7.x/identicon/svg?seed=${user.id}`,
+          coverImage: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=1200&q=80',
+          bio: '',
+          location: '',
+          website: '',
+          websiteUrl: '',
+          pronouns: '',
+          isVerified: false,
+          followersCount: '0',
+          followingCount: '0',
+          postsCount: '0',
+          joined: user.created_at
+            ? `Joined ${new Date(user.created_at).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}`
+            : 'Joined recently',
+        };
+        setProfile(synthesizedProfile);
         setPosts([]);
+        setLikedPosts([]);
       } else {
-        // Mock fallback for requested username
-        handleMockFallback();
+        // Profile not found in Supabase
+        setProfile(null);
+        setPosts([]);
+        setLikedPosts([]);
+        setError("This account doesn't exist");
       }
     } catch (err) {
       console.error('[useProfile] Unexpected error:', err);
       setError(err.message || 'Failed to load profile');
-      handleMockFallback();
+      setProfile(null);
+      setPosts([]);
+      setLikedPosts([]);
     } finally {
       setLoading(false);
     }
@@ -279,6 +325,7 @@ export function useProfile(identifier) {
     // Optimistic UI update
     setIsFollowing(!previousFollowing);
     setProfile((prev) => {
+      if (!prev) return prev;
       const current = parseInt(String(prev.followersCount).replace(/[^0-9]/g, '') || '0', 10);
       const next = previousFollowing ? Math.max(current - 1, 0) : current + 1;
       return { ...prev, followersCount: String(next) };
@@ -310,7 +357,7 @@ export function useProfile(identifier) {
       console.error('[useProfile] Failed to toggle follow:', err);
       // Rollback
       setIsFollowing(previousFollowing);
-      setProfile((prev) => ({ ...prev, followersCount: previousCount }));
+      setProfile((prev) => (prev ? { ...prev, followersCount: previousCount } : prev));
       throw err;
     } finally {
       setIsFollowLoading(false);
@@ -321,11 +368,7 @@ export function useProfile(identifier) {
    * Update Profile in Supabase
    */
   const updateProfile = async (updates) => {
-    if (!isSupabaseConfigured || !user?.id) {
-      // Optimistic local update when unconfigured
-      setProfile((prev) => ({ ...prev, ...updates }));
-      return;
-    }
+    if (!user?.id) return;
 
     setIsUpdating(true);
     setError(null);
@@ -335,20 +378,25 @@ export function useProfile(identifier) {
     setProfile((prev) => ({
       ...prev,
       ...updates,
-      name: updates.full_name || prev.name,
-      website: updates.website || prev.website,
+      name: updates.name || updates.full_name || prev?.name,
+      website: updates.website || prev?.website,
     }));
+
+    if (!isSupabaseConfigured) {
+      setIsUpdating(false);
+      return;
+    }
 
     try {
       const dbPayload = {
         id: user.id,
-        full_name: updates.name || updates.full_name || profile.name,
-        bio: updates.bio ?? profile.bio,
-        location: updates.location ?? profile.location,
-        website: updates.website ?? profile.website,
-        avatar_url: updates.avatar ?? updates.avatar_url ?? profile.avatar,
-        cover_url: updates.coverImage ?? updates.cover_url ?? profile.coverImage,
-        pronouns: updates.pronouns ?? profile.pronouns,
+        full_name: updates.name || updates.full_name || profile?.name,
+        bio: updates.bio ?? profile?.bio ?? '',
+        location: updates.location ?? profile?.location ?? '',
+        website: updates.website ?? profile?.website ?? '',
+        avatar_url: updates.avatar ?? updates.avatar_url ?? profile?.avatar ?? '',
+        cover_url: updates.coverImage ?? updates.cover_url ?? profile?.coverImage ?? '',
+        pronouns: updates.pronouns ?? profile?.pronouns ?? '',
         updated_at: new Date().toISOString(),
       };
 
@@ -363,13 +411,13 @@ export function useProfile(identifier) {
       // Sync confirmed DB fields
       setProfile((prev) => ({
         ...prev,
-        name: data.full_name,
-        bio: data.bio,
-        location: data.location,
-        website: data.website,
-        avatar: data.avatar_url,
-        coverImage: data.cover_url,
-        pronouns: data.pronouns,
+        name: data.full_name || prev?.name,
+        bio: data.bio || '',
+        location: data.location || '',
+        website: data.website || '',
+        avatar: data.avatar_url || prev?.avatar,
+        coverImage: data.cover_url || prev?.coverImage,
+        pronouns: data.pronouns || '',
       }));
 
       return data;
