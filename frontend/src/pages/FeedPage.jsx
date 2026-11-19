@@ -2,51 +2,18 @@ import React, { useState } from 'react';
 import Layout from '../components/Layout';
 import TweetComposer from '../components/TweetComposer';
 import PostCard from '../components/PostCard';
-import { initialFeedPosts, currentUser } from '../data/mockData';
+import usePosts from '../hooks/usePosts';
 
 export default function FeedPage() {
   const [activeTab, setActiveTab] = useState('foryou'); // 'foryou' | 'following'
-  const [posts, setPosts] = useState(initialFeedPosts);
+  const { posts, loading, error, createPost, clearError } = usePosts();
 
-  const handleCreatePost = (postData) => {
-    const isObject = typeof postData === 'object';
-    const content = isObject ? postData.content : postData;
-    const hasAttachment = isObject ? postData.hasAttachment : false;
-
-    const newPost = {
-      id: `post-${Date.now()}`,
-      author: {
-        name: currentUser.name,
-        handle: currentUser.handle,
-        avatar: currentUser.avatar,
-        verified: true
-      },
-      time: "Just now",
-      content: content,
-      embedType: hasAttachment ? "link" : undefined,
-      linkData: hasAttachment
-        ? {
-            image:
-              "https://lh3.googleusercontent.com/aida-public/AB6AXuBQpDIJW54LFhEFswM3hRua89OnvC_ffUTVqzFvrWKxIuAu7c47NbPhRgNALpOj0jAd0BetdqCgjzdmxh0Wk-DsuIXCI0OAfBNkfUkTR_ILGPAj9ZpAdcANppOAuLxVsG7DSiQ8BIQf9sMdjxneA-x3e4NROil7CQoVeuBQwxJzDT0lX_Br3Qu74X7Z5Bfi0-pm5TTVajhOGkIB_7ypyLK3QbccY-TFajHwZQBIVz0",
-            url: "github.com/acmelabs/topology-engine",
-            title: "topology-engine: Ultra-low latency layout solver",
-            description:
-              "A SIMD-accelerated physical force simulation engine tuned for browser runtimes and micro-interactions."
-          }
-        : undefined,
-      stats: {
-        replies: 0,
-        retweets: 0,
-        likes: 0,
-        likesFormatted: "0",
-        views: "1",
-        isLiked: false,
-        isRetweeted: false,
-        isBookmarked: false
-      }
-    };
-
-    setPosts([newPost, ...posts]);
+  const handleCreatePost = async (postData) => {
+    try {
+      await createPost(postData);
+    } catch (err) {
+      console.error('[FeedPage] Failed to publish post:', err);
+    }
   };
 
   const displayedPosts =
@@ -103,6 +70,23 @@ export default function FeedPage() {
           </div>
         </header>
 
+        {/* Global Feed Error Banner */}
+        {error && (
+          <div className="mx-space-lg my-space-sm p-3.5 rounded-2xl bg-error-container/30 border border-error/40 flex items-center justify-between text-body-sm text-error">
+            <div className="flex items-center gap-2">
+              <span className="material-symbols-outlined text-[18px]">error</span>
+              <span>{error}</span>
+            </div>
+            <button
+              onClick={clearError}
+              className="text-error hover:opacity-80 p-1"
+              title="Dismiss error"
+            >
+              <span className="material-symbols-outlined text-[16px]">close</span>
+            </button>
+          </div>
+        )}
+
         {/* In-feed Tweet Composer */}
         <TweetComposer onPublish={handleCreatePost} />
 
@@ -117,7 +101,7 @@ export default function FeedPage() {
         <div className="py-space-xl flex flex-col items-center justify-center text-outline gap-space-xs bg-surface-container-lowest/20">
           <div className="w-6 h-6 rounded-full border-2 border-primary-container border-t-transparent animate-spin"></div>
           <span className="font-label-sm text-label-sm tracking-wider uppercase">
-            Loading more updates
+            {loading ? 'Refreshing posts...' : 'Loading more updates'}
           </span>
         </div>
       </div>
