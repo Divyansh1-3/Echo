@@ -1,13 +1,32 @@
-import React from 'react';
-import { Link, useLocation } from 'react-router-dom';
-import { currentUser } from '../data/mockData';
+import React, { useState } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { currentUser as fallbackUser } from '../data/mockData';
+import { useAuth } from '../context/AuthContext';
 
 export default function Sidebar({ onOpenTweetModal }) {
   const location = useLocation();
-  const currentPath = location.pathname;
+  const navigate = useNavigate();
+  const { user, signOut } = useAuth();
+  const [showMenu, setShowMenu] = useState(false);
 
+  const currentPath = location.pathname;
   const isHome = currentPath === '/feed' || currentPath === '/';
   const isProfile = currentPath === '/profile';
+
+  // Derived user display
+  const displayName = user?.user_metadata?.full_name || fallbackUser.name;
+  const displayHandle = user?.user_metadata?.username || (user?.email ? user.email.split('@')[0] : fallbackUser.handle);
+  const displayAvatar = user?.user_metadata?.avatar_url || fallbackUser.avatar;
+
+  const handleSignOut = async () => {
+    try {
+      await signOut();
+      setShowMenu(false);
+      navigate('/login');
+    } catch (err) {
+      console.error('[SignOut Error]', err);
+    }
+  };
 
   return (
     <aside className="hidden sm:flex sm:w-20 lg:w-[260px] h-screen sticky top-0 z-30 flex-col justify-between py-space-md px-space-sm lg:px-space-md bg-surface shrink-0">
@@ -74,14 +93,16 @@ export default function Sidebar({ onOpenTweetModal }) {
             </span>
           </Link>
 
-          {/* Login / Auth */}
+          {/* Sign In / Auth */}
           <Link
             to="/login"
             className="flex items-center justify-center lg:justify-start gap-space-lg px-space-md py-space-md rounded-full text-on-surface-variant hover:bg-surface-container hover:text-on-surface transition-all"
           >
-            <span className="material-symbols-outlined text-[26px]">login</span>
+            <span className="material-symbols-outlined text-[26px]">
+              {user ? 'badge' : 'login'}
+            </span>
             <span className="hidden lg:inline font-headline-md text-headline-md">
-              Sign In
+              {user ? 'Account' : 'Sign In'}
             </span>
           </Link>
         </nav>
@@ -98,30 +119,52 @@ export default function Sidebar({ onOpenTweetModal }) {
         </div>
       </div>
 
-      {/* User Profile Capsule at Bottom */}
-      <Link
-        to="/profile"
-        className="flex items-center justify-between p-space-sm rounded-full hover:bg-surface-container transition-colors cursor-pointer"
-      >
-        <div className="flex items-center gap-space-sm overflow-hidden">
-          <img
-            alt={currentUser.name}
-            className="w-10 h-10 rounded-full object-cover shrink-0"
-            src={currentUser.avatar}
-          />
-          <div className="hidden lg:flex flex-col min-w-0 leading-tight">
-            <span className="font-label-lg text-label-lg text-on-surface truncate">
-              {currentUser.name}
-            </span>
-            <span className="font-body-sm text-body-sm text-outline truncate">
-              @{currentUser.handle}
-            </span>
+      {/* User Profile Capsule with Logout popup menu */}
+      <div className="relative">
+        {showMenu && (
+          <div className="absolute bottom-16 left-0 right-0 bg-surface-container rounded-2xl p-2 shadow-2xl border border-outline-variant/40 flex flex-col gap-1 z-50">
+            <Link
+              to="/profile"
+              onClick={() => setShowMenu(false)}
+              className="flex items-center gap-2 p-2.5 rounded-xl hover:bg-surface-container-high text-on-surface text-body-sm transition-colors"
+            >
+              <span className="material-symbols-outlined text-[18px]">person</span>
+              <span>View Profile</span>
+            </Link>
+            <button
+              onClick={handleSignOut}
+              className="w-full flex items-center gap-2 p-2.5 rounded-xl hover:bg-error-container/30 text-error text-body-sm transition-colors text-left"
+            >
+              <span className="material-symbols-outlined text-[18px]">logout</span>
+              <span>Log out @{displayHandle}</span>
+            </button>
           </div>
+        )}
+
+        <div
+          onClick={() => setShowMenu(!showMenu)}
+          className="flex items-center justify-between p-space-sm rounded-full hover:bg-surface-container transition-colors cursor-pointer"
+        >
+          <div className="flex items-center gap-space-sm overflow-hidden">
+            <img
+              alt={displayName}
+              className="w-10 h-10 rounded-full object-cover shrink-0"
+              src={displayAvatar}
+            />
+            <div className="hidden lg:flex flex-col min-w-0 leading-tight">
+              <span className="font-label-lg text-label-lg text-on-surface truncate">
+                {displayName}
+              </span>
+              <span className="font-body-sm text-body-sm text-outline truncate">
+                @{displayHandle}
+              </span>
+            </div>
+          </div>
+          <span className="material-symbols-outlined hidden lg:block text-outline">
+            more_horiz
+          </span>
         </div>
-        <span className="material-symbols-outlined hidden lg:block text-outline">
-          more_horiz
-        </span>
-      </Link>
+      </div>
     </aside>
   );
 }

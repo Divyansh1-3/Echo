@@ -1,8 +1,11 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 
 export default function LoginPage() {
   const navigate = useNavigate();
+  const { signIn, signUp, signInWithOAuth, isConfigured } = useAuth();
+
   const [authMode, setAuthMode] = useState('login'); // 'login' | 'signup'
   const [showPassword, setShowPassword] = useState(false);
   const [fullName, setFullName] = useState('');
@@ -12,21 +15,86 @@ export default function LoginPage() {
   const [rememberMe, setRememberMe] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
 
   const cleanHandle = username.replace(/[^a-zA-Z0-9_]/g, '');
   const isHandleAvailable = cleanHandle.length >= 3;
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
+    setErrorMessage('');
+    setSuccessMessage('');
     setIsSubmitting(true);
 
-    setTimeout(() => {
-      setSubmitSuccess(true);
-      setTimeout(() => {
-        setIsSubmitting(false);
+    try {
+      if (isConfigured) {
+        if (authMode === 'login') {
+          await signIn({
+            email: identifier.trim(),
+            password: password,
+          });
+          setSubmitSuccess(true);
+          setTimeout(() => {
+            setIsSubmitting(false);
+            navigate('/feed');
+          }, 800);
+        } else {
+          const res = await signUp({
+            email: identifier.trim(),
+            password: password,
+            fullName: fullName.trim(),
+            username: cleanHandle,
+          });
+
+          // If Supabase has email confirmation enabled, session will be null
+          if (!res?.session && res?.user) {
+            setSuccessMessage(
+              'Account created! A verification link has been sent to your email. Confirm it to log in, or toggle off "Confirm email" in Supabase Auth settings for instant testing.'
+            );
+            setIsSubmitting(false);
+            setAuthMode('login');
+            return;
+          }
+
+          setSubmitSuccess(true);
+          setTimeout(() => {
+            setIsSubmitting(false);
+            navigate('/feed');
+          }, 800);
+        }
+      } else {
+        // Simulated local fallback if credentials haven't been pasted into .env yet
+        await new Promise((resolve) => setTimeout(resolve, 800));
+        setSubmitSuccess(true);
+        setTimeout(() => {
+          setIsSubmitting(false);
+          navigate('/feed');
+        }, 800);
+      }
+    } catch (err) {
+      console.error('[Auth Error]', err);
+      let msg = err.message || 'Authentication failed. Please check your credentials.';
+      if (msg.includes('Email not confirmed')) {
+        msg = 'Email not confirmed yet. Please click the confirmation link in your inbox, or disable "Confirm email" in Supabase Project Settings -> Auth.';
+      }
+      setErrorMessage(msg);
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleOAuth = async (provider) => {
+    setErrorMessage('');
+    try {
+      if (isConfigured) {
+        await signInWithOAuth(provider);
+      } else {
         navigate('/feed');
-      }, 1000);
-    }, 1200);
+      }
+    } catch (err) {
+      console.error(`[OAuth ${provider} Error]`, err);
+      setErrorMessage(err.message || `Failed to sign in with ${provider}.`);
+    }
   };
 
   return (
@@ -240,6 +308,39 @@ export default function LoginPage() {
             </p>
           </div>
 
+          {/* Supabase Status Banner if unconfigured */}
+          {!isConfigured && (
+            <div className="mb-5 p-3 rounded-xl bg-surface-container-high border border-outline-variant/40 flex items-start gap-2.5 text-body-sm">
+              <span className="material-symbols-outlined text-primary text-[18px] shrink-0 mt-0.5">
+                info
+              </span>
+              <div className="text-on-surface-variant">
+                <span className="text-on-surface font-semibold">Supabase Setup: </span>
+                Add your credentials to <code className="text-primary font-mono text-xs">.env</code> to connect to your live backend. Local test login is active.
+              </div>
+            </div>
+          )}
+
+          {/* Success Message Alert */}
+          {successMessage && (
+            <div className="mb-5 p-3.5 rounded-xl bg-emerald-950/40 border border-emerald-500/50 flex items-start gap-2.5 text-body-sm text-emerald-400">
+              <span className="material-symbols-outlined text-[18px] shrink-0 mt-0.5">
+                mark_email_read
+              </span>
+              <span>{successMessage}</span>
+            </div>
+          )}
+
+          {/* Error Message Alert */}
+          {errorMessage && (
+            <div className="mb-5 p-3.5 rounded-xl bg-error-container/30 border border-error/50 flex items-start gap-2.5 text-body-sm text-error">
+              <span className="material-symbols-outlined text-[18px] shrink-0 mt-0.5">
+                error
+              </span>
+              <span>{errorMessage}</span>
+            </div>
+          )}
+
           {/* Interactive Mode Switcher Tabs */}
           <div className="grid grid-cols-2 p-1 bg-surface-container rounded-full mb-6">
             <button
@@ -248,7 +349,10 @@ export default function LoginPage() {
                   ? 'font-semibold text-on-surface bg-surface-container-high shadow-sm'
                   : 'font-medium text-on-surface-variant hover:text-on-surface'
               }`}
-              onClick={() => setAuthMode('login')}
+              onClick={() => {
+                setAuthMode('login');
+                setErrorMessage('');
+              }}
               type="button"
             >
               Sign In
@@ -259,7 +363,10 @@ export default function LoginPage() {
                   ? 'font-semibold text-on-surface bg-surface-container-high shadow-sm'
                   : 'font-medium text-on-surface-variant hover:text-on-surface'
               }`}
-              onClick={() => setAuthMode('signup')}
+              onClick={() => {
+                setAuthMode('signup');
+                setErrorMessage('');
+              }}
               type="button"
             >
               Create Account
@@ -272,7 +379,7 @@ export default function LoginPage() {
             <button
               className="w-full flex items-center justify-center gap-3 py-3 px-4 rounded-full bg-surface-container-low hover:bg-surface-container-high transition-colors font-label-md text-label-md font-semibold text-on-surface group cursor-pointer"
               type="button"
-              onClick={() => navigate('/feed')}
+              onClick={() => handleOAuth('google')}
             >
               <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24">
                 <path
@@ -301,7 +408,7 @@ export default function LoginPage() {
             <button
               className="w-full flex items-center justify-center gap-3 py-3 px-4 rounded-full bg-surface-container-low hover:bg-surface-container-high transition-colors font-label-md text-label-md font-semibold text-on-surface group cursor-pointer"
               type="button"
-              onClick={() => navigate('/feed')}
+              onClick={() => handleOAuth('apple')}
             >
               <svg className="w-5 h-5 flex-shrink-0 fill-current text-on-surface" viewBox="0 0 24 24">
                 <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M15.97 6.38c.62-.75 1.04-1.8 0.93-2.85-.9.04-1.99.6-2.63 1.35-.58.67-.99 1.74-.86 2.76 1 .08 2.03-.53 2.56-1.26"></path>
@@ -374,10 +481,10 @@ export default function LoginPage() {
               </div>
             )}
 
-            {/* Email or Username */}
+            {/* Email or Identifier */}
             <div className="flex flex-col gap-1.5">
               <label className="font-label-md text-label-md text-on-surface" htmlFor="user-identifier">
-                Email or Username
+                Email Address
               </label>
               <div className="relative flex items-center">
                 <span className="material-symbols-outlined absolute left-3.5 text-outline pointer-events-none text-xl">
@@ -388,7 +495,7 @@ export default function LoginPage() {
                   id="user-identifier"
                   placeholder="name@organization.io"
                   required
-                  type="text"
+                  type="email"
                   value={identifier}
                   onChange={(e) => setIdentifier(e.target.value)}
                 />
@@ -416,6 +523,7 @@ export default function LoginPage() {
                   id="user-password"
                   placeholder="••••••••"
                   required
+                  minLength={6}
                   type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
@@ -496,7 +604,10 @@ export default function LoginPage() {
                   Don't have an account yet?{' '}
                   <button
                     className="text-primary font-bold hover:underline ml-1 cursor-pointer"
-                    onClick={() => setAuthMode('signup')}
+                    onClick={() => {
+                      setAuthMode('signup');
+                      setErrorMessage('');
+                    }}
                     type="button"
                   >
                     Sign up
@@ -507,7 +618,10 @@ export default function LoginPage() {
                   Already have an account?{' '}
                   <button
                     className="text-primary font-bold hover:underline ml-1 cursor-pointer"
-                    onClick={() => setAuthMode('login')}
+                    onClick={() => {
+                      setAuthMode('login');
+                      setErrorMessage('');
+                    }}
                     type="button"
                   >
                     Log in
