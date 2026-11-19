@@ -226,14 +226,21 @@ export function usePosts() {
     setPosts([optimisticPost, ...previousPosts]);
 
     // If Supabase is not configured, we simulate instant success locally
-    if (!isConfigured) {
+    if (!isSupabaseConfigured) {
       return optimisticPost;
+    }
+
+    if (!user?.id) {
+      const err = new Error('You must be logged in to create a post.');
+      setPosts(previousPosts);
+      setError(err.message);
+      throw err;
     }
 
     // Step D: Perform actual Supabase network request
     try {
       const payload = {
-        user_id: user?.id || null,
+        user_id: user.id,
         author_name: authorName,
         author_handle: authorHandle,
         author_avatar: authorAvatar,

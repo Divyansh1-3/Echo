@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 export default function LoginPage() {
   const navigate = useNavigate();
-  const { signIn, signUp, signInWithOAuth, isConfigured } = useAuth();
+  const location = useLocation();
+  const { user, loading, signIn, signUp, signInWithOAuth, isConfigured } = useAuth();
 
   const [authMode, setAuthMode] = useState('login'); // 'login' | 'signup'
   const [showPassword, setShowPassword] = useState(false);
@@ -17,6 +18,16 @@ export default function LoginPage() {
   const [submitSuccess, setSubmitSuccess] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
+
+  // Destination after authentication (preserves intended page if redirected by ProtectedRoute)
+  const fromPath = location.state?.from?.pathname || '/feed';
+
+  // If user is already authenticated, redirect them away from login page
+  useEffect(() => {
+    if (!loading && user) {
+      navigate(fromPath, { replace: true });
+    }
+  }, [user, loading, navigate, fromPath]);
 
   const cleanHandle = username.replace(/[^a-zA-Z0-9_]/g, '');
   const isHandleAvailable = cleanHandle.length >= 3;
@@ -37,7 +48,7 @@ export default function LoginPage() {
           setSubmitSuccess(true);
           setTimeout(() => {
             setIsSubmitting(false);
-            navigate('/feed');
+            navigate(fromPath, { replace: true });
           }, 800);
         } else {
           const res = await signUp({
@@ -60,7 +71,7 @@ export default function LoginPage() {
           setSubmitSuccess(true);
           setTimeout(() => {
             setIsSubmitting(false);
-            navigate('/feed');
+            navigate(fromPath, { replace: true });
           }, 800);
         }
       } else {
@@ -69,7 +80,7 @@ export default function LoginPage() {
         setSubmitSuccess(true);
         setTimeout(() => {
           setIsSubmitting(false);
-          navigate('/feed');
+          navigate(fromPath, { replace: true });
         }, 800);
       }
     } catch (err) {

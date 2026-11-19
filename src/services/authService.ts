@@ -39,6 +39,13 @@ export const authService = {
     if (!isSupabaseConfigured) return Promise.resolve({ error: null });
     return supabase.auth.signOut();
   },
+
+  onAuthStateChange: (callback: (event: any, session: any) => void) => {
+    if (!isSupabaseConfigured) {
+      return { data: { subscription: { unsubscribe: () => {} } } };
+    }
+    return supabase.auth.onAuthStateChange(callback);
+  },
 };
 
 export default authService;

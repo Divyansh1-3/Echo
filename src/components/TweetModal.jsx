@@ -1,7 +1,16 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { currentUser } from '../data/mockData';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { currentUser as fallbackUser } from '../data/mockData';
+import { useAuth } from '../context/AuthContext';
 
 export default function TweetModal({ isOpen, onClose, onPost }) {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { user, isConfigured } = useAuth();
+
+  const displayName = user?.user_metadata?.full_name || fallbackUser.name;
+  const displayAvatar = user?.user_metadata?.avatar_url || fallbackUser.avatar;
+
   const [content, setContent] = useState(
     "Just dropped a preview of our new real-time graph rendering engine for @acmelabs 🚀 Decoupled layout calculations mean zero dropped frames at 120Hz on complex topologies."
   );
@@ -30,6 +39,13 @@ export default function TweetModal({ isOpen, onClose, onPost }) {
 
   const handleSubmit = () => {
     if (!content.trim() && !showAttachment) return;
+
+    if (isConfigured && !user) {
+      onClose();
+      navigate('/login', { state: { from: location } });
+      return;
+    }
+
     setIsSubmitting(true);
     setTimeout(() => {
       if (onPost) {
@@ -81,9 +97,9 @@ export default function TweetModal({ isOpen, onClose, onPost }) {
           <div className="flex flex-col items-center shrink-0">
             <div className="relative w-11 h-11 rounded-full overflow-hidden bg-surface-container-high">
               <img
-                alt={currentUser.name}
+                alt={displayName}
                 className="w-full h-full object-cover"
-                src={currentUser.avatar}
+                src={displayAvatar}
               />
             </div>
             {/* Thread connection track indicator */}

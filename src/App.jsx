@@ -3,6 +3,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import FeedPage from './pages/FeedPage';
 import LoginPage from './pages/LoginPage';
 import ProfilePage from './pages/ProfilePage';
+import ProtectedRoute from './components/ProtectedRoute';
 
 export default function App() {
   return (
@@ -10,7 +11,14 @@ export default function App() {
       <Route path="/" element={<Navigate to="/feed" replace />} />
       <Route path="/feed" element={<FeedPage />} />
       <Route path="/login" element={<LoginPage />} />
-      <Route path="/profile" element={<ProfilePage />} />
+      <Route
+        path="/profile"
+        element={
+          <ProtectedRoute>
+            <ProfilePage />
+          </ProtectedRoute>
+        }
+      />
       <Route path="*" element={<Navigate to="/feed" replace />} />
     </Routes>
   );

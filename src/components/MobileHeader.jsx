@@ -1,16 +1,26 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { currentUser } from '../data/mockData';
+import { useAuth } from '../context/AuthContext';
 
 export default function MobileHeader({ title = "X Feed" }) {
+  const { user } = useAuth();
+  const avatar = user?.user_metadata?.avatar_url || (user ? currentUser.avatar : null);
+
   return (
     <header className="md:hidden fixed top-0 left-0 right-0 h-14 bg-surface/85 backdrop-blur-xl z-40 flex items-center justify-between px-space-lg shadow-[0_1px_8px_rgba(0,0,0,0.3)]">
-      <Link to="/profile" className="flex items-center gap-space-md">
-        <img
-          alt="Profile"
-          className="w-8 h-8 rounded-full object-cover"
-          src={currentUser.avatar}
-        />
+      <Link to={user ? "/profile" : "/login"} className="flex items-center gap-space-md">
+        {user && avatar ? (
+          <img
+            alt="Profile"
+            className="w-8 h-8 rounded-full object-cover"
+            src={avatar}
+          />
+        ) : (
+          <div className="w-8 h-8 rounded-full bg-surface-container-high flex items-center justify-center text-outline">
+            <span className="material-symbols-outlined text-[18px]">person</span>
+          </div>
+        )}
         <span className="font-headline-md text-headline-md text-on-surface">{title}</span>
       </Link>
       <Link to="/feed">
@@ -21,8 +31,14 @@ export default function MobileHeader({ title = "X Feed" }) {
         />
       </Link>
       <div className="w-8 flex justify-end">
-        <Link to="/login" className="flex items-center text-on-surface-variant hover:text-on-surface">
-          <span className="material-symbols-outlined">settings</span>
+        <Link
+          to={user ? "/profile" : "/login"}
+          className="flex items-center text-on-surface-variant hover:text-on-surface"
+          title={user ? "Profile & Settings" : "Sign In"}
+        >
+          <span className="material-symbols-outlined">
+            {user ? 'account_circle' : 'login'}
+          </span>
         </Link>
       </div>
     </header>

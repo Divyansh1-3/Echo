@@ -1,10 +1,19 @@
 import React, { useState, useRef } from 'react';
-import { currentUser } from '../data/mockData';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { currentUser as fallbackUser } from '../data/mockData';
+import { useAuth } from '../context/AuthContext';
 
 export default function TweetComposer({ onPublish }) {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { user, isConfigured } = useAuth();
+
   const [text, setText] = useState("");
   const [isPublishing, setIsPublishing] = useState(false);
   const textareaRef = useRef(null);
+
+  const displayName = user?.user_metadata?.full_name || fallbackUser.name;
+  const displayAvatar = user?.user_metadata?.avatar_url || fallbackUser.avatar;
 
   const maxChars = 280;
   const charsCount = text.length;
@@ -21,6 +30,12 @@ export default function TweetComposer({ onPublish }) {
 
   const handlePublish = () => {
     if (!text.trim()) return;
+
+    if (isConfigured && !user) {
+      navigate('/login', { state: { from: location } });
+      return;
+    }
+
     setIsPublishing(true);
     setTimeout(() => {
       if (onPublish) {
@@ -38,9 +53,9 @@ export default function TweetComposer({ onPublish }) {
     <section className="bg-surface px-space-lg py-space-md flex flex-col gap-space-sm bg-surface-container-lowest/30 border-b border-outline-variant/20">
       <div className="flex gap-space-md items-start">
         <img
-          alt={currentUser.name}
+          alt={displayName}
           className="w-10 h-10 rounded-full object-cover shrink-0 shadow-sm"
-          src={currentUser.avatar}
+          src={displayAvatar}
         />
         <div className="flex-1 flex flex-col min-w-0">
           {/* Audience Picker Pill */}
