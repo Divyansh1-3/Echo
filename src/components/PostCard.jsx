@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { supabase, isSupabaseConfigured } from '../lib/supabaseClient';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 
 export default function PostCard({ post }) {

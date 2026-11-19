@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase, isSupabaseConfigured } from '../lib/supabaseClient';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { currentUser as fallbackUser, profilePosts as fallbackPosts } from '../data/mockData';
 import { useAuth } from '../context/AuthContext';
 

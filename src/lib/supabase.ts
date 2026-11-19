@@ -16,7 +16,6 @@ if (!isSupabaseConfigured) {
   );
 }
 
-// Fallback dummy URL to prevent createClient from throwing an error if env vars are unset during initial setup
 const validUrl = isSupabaseConfigured ? supabaseUrl : 'https://placeholder.supabase.co';
 const validKey = isSupabaseConfigured ? supabaseAnonKey : 'placeholder-key';
 
@@ -28,3 +27,5 @@ export const supabase = createClient(validUrl, validKey, {
     storage: typeof window !== 'undefined' ? window.localStorage : undefined,
   },
 });
+
+export default supabase;

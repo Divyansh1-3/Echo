@@ -20,6 +20,9 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
+# Backups
+stitch_html_backup/
+
 # Editor / OS
 .DS_Store
 Thumbs.db
