@@ -1,20 +1,52 @@
 import React, { useState } from 'react';
+import { supabase, isSupabaseConfigured } from '../lib/supabaseClient';
+import { useAuth } from '../context/AuthContext';
 
 export default function PostCard({ post }) {
+  const { user } = useAuth();
   const [isLiked, setIsLiked] = useState(post.stats?.isLiked || false);
   const [likeCount, setLikeCount] = useState(post.stats?.likes || 0);
   const [isRetweeted, setIsRetweeted] = useState(post.stats?.isRetweeted || false);
   const [retweetCount, setRetweetCount] = useState(post.stats?.retweets || 0);
   const [isBookmarked, setIsBookmarked] = useState(post.stats?.isBookmarked || false);
 
-  const toggleLike = (e) => {
+  const toggleLike = async (e) => {
     e.stopPropagation();
-    if (isLiked) {
-      setIsLiked(false);
-      setLikeCount((prev) => Math.max(prev - 1, 0));
-    } else {
-      setIsLiked(true);
-      setLikeCount((prev) => prev + 1);
+
+    const previousLiked = isLiked;
+    const previousCount = likeCount;
+
+    // Optimistic Update
+    setIsLiked(!previousLiked);
+    setLikeCount((prev) => (previousLiked ? Math.max(prev - 1, 0) : prev + 1));
+
+    if (!isSupabaseConfigured || !user?.id || !post.id || String(post.id).startsWith('feed-')) {
+      return;
+    }
+
+    try {
+      if (previousLiked) {
+        // Delete like
+        const { error } = await supabase
+          .from('likes')
+          .delete()
+          .eq('user_id', user.id)
+          .eq('post_id', post.id);
+
+        if (error) throw error;
+      } else {
+        // Insert like
+        const { error } = await supabase
+          .from('likes')
+          .insert([{ user_id: user.id, post_id: post.id }]);
+
+        if (error) throw error;
+      }
+    } catch (err) {
+      console.error('[PostCard] Failed to toggle like in Supabase:', err);
+      // Rollback on error
+      setIsLiked(previousLiked);
+      setLikeCount(previousCount);
     }
   };
 
