@@ -27,13 +27,14 @@ function formatTimeAgo(dateString) {
  * Maps Supabase DB row to the frontend PostCard model
  */
 function mapDbRowToPost(row) {
+  const authorProfile = row.profiles || {};
   return {
     id: row.id,
     author: {
-      name: row.author_name || 'Anonymous',
-      handle: row.author_handle || 'user',
-      avatar: row.author_avatar || fallbackUser.avatar,
-      verified: Boolean(row.author_verified),
+      name: authorProfile.full_name || row.author_name || 'Anonymous',
+      handle: authorProfile.username || row.author_handle || 'user',
+      avatar: authorProfile.avatar_url || row.author_avatar || fallbackUser.avatar,
+      verified: authorProfile.is_verified ?? Boolean(row.author_verified),
     },
     time: formatTimeAgo(row.created_at),
     content: row.content,
@@ -85,7 +86,15 @@ export function usePosts() {
     try {
       const { data, error: fetchError } = await supabase
         .from('posts')
-        .select('*')
+        .select(`
+          *,
+          profiles:user_id (
+            username,
+            full_name,
+            avatar_url,
+            is_verified
+          )
+        `)
         .order('created_at', { ascending: false });
 
       if (fetchError) {
