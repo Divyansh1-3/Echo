@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
-import { initialFeedPosts, currentUser as fallbackUser } from '../data/mockData';
+import { currentUser as fallbackUser } from '../data/mockData';
 import { useAuth } from '../context/AuthContext';
 
 /**
@@ -29,12 +29,12 @@ function formatTimeAgo(dateString) {
 function mapDbRowToPost(row) {
   const authorProfile = row.profiles || {};
   const authorId = row.user_id || authorProfile.id || null;
-  const authorHandle = authorProfile.username || row.author_handle || (authorId ? `user_${String(authorId).slice(0, 8)}` : 'user');
+  const authorHandle = authorProfile.username || row.author_handle || (authorId ? `user_${String(authorId).slice(0, 8)}` : null);
   const authorName = authorProfile.full_name || row.author_name || authorHandle || 'Anonymous';
   const authorAvatar =
     authorProfile.avatar_url ||
     row.author_avatar ||
-    `https://api.dicebear.com/7.x/identicon/svg?seed=${authorHandle}`;
+    (authorHandle ? `https://api.dicebear.com/7.x/identicon/svg?seed=${authorHandle}` : null);
 
   return {
     id: row.id,
@@ -42,7 +42,7 @@ function mapDbRowToPost(row) {
     author: {
       id: authorId,
       name: authorName,
-      handle: String(authorHandle).replace(/^@/, ''),
+      handle: authorHandle ? String(authorHandle).replace(/^@/, '') : null,
       avatar: authorAvatar,
       verified: authorProfile.is_verified ?? Boolean(row.author_verified),
     },
@@ -57,7 +57,7 @@ function mapDbRowToPost(row) {
     chartData: row.embed_type === 'chart' ? row.embed_data : undefined,
     stats: {
       replies: row.replies_count || 0,
-      retweets: row.retweets_count || 0,
+      retweets: row.reposts_count || 0,
       likes: row.likes_count || 0,
       likesFormatted: row.likes_count ? String(row.likes_count) : '0',
       views: row.views_count ? `${row.views_count}` : '1',
@@ -71,7 +71,7 @@ function mapDbRowToPost(row) {
 
 export function usePosts() {
   const { user } = useAuth();
-  const [posts, setPosts] = useState(initialFeedPosts);
+  const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -80,15 +80,14 @@ export function usePosts() {
   postsRef.current = posts;
 
   /**
-   * 1. Fetch posts from Supabase
+   * 1. Fetch real posts from Supabase
    */
   const fetchPosts = useCallback(async () => {
     setLoading(true);
     setError(null);
 
     if (!isSupabaseConfigured) {
-      // If Supabase credentials are not set, use mock data fallback
-      setPosts(initialFeedPosts);
+      setPosts([]);
       setLoading(false);
       return;
     }
@@ -99,6 +98,7 @@ export function usePosts() {
         .select(`
           *,
           profiles:user_id (
+            id,
             username,
             full_name,
             avatar_url,
@@ -108,21 +108,18 @@ export function usePosts() {
         .order('created_at', { ascending: false });
 
       if (fetchError) {
-        // If table does not exist yet in Supabase, warn gracefully and use mock posts
-        console.warn('[usePosts] Supabase fetch error (table may not exist yet):', fetchError.message);
-        setError(fetchError.message);
-        setPosts(initialFeedPosts);
+        console.warn('[usePosts] Supabase fetch notice:', fetchError.message);
+        setPosts([]);
       } else if (data && data.length > 0) {
         const formatted = data.map(mapDbRowToPost);
         setPosts(formatted);
       } else {
-        // Table exists but is empty - initialize with mock posts
-        setPosts(initialFeedPosts);
+        setPosts([]);
       }
     } catch (err) {
       console.error('[usePosts] Unexpected error while fetching posts:', err);
       setError(err.message || 'Failed to fetch posts');
-      setPosts(initialFeedPosts);
+      setPosts([]);
     } finally {
       setLoading(false);
     }
@@ -178,20 +175,21 @@ export function usePosts() {
     }
 
     // Determine author profile
-    const authorName = user?.user_metadata?.full_name || fallbackUser.name;
+    const authorName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'User';
     const authorHandle =
       user?.user_metadata?.username ||
-      (user?.email ? user.email.split('@')[0] : fallbackUser.handle);
-    const authorAvatar = user?.user_metadata?.avatar_url || fallbackUser.avatar;
+      (user?.email ? user.email.split('@')[0] : (user?.id ? `user_${user.id.slice(0, 8)}` : 'user'));
+    const authorAvatar =
+      user?.user_metadata?.avatar_url ||
+      (user?.id ? `https://api.dicebear.com/7.x/identicon/svg?seed=${authorHandle}` : null);
 
     // Default attachment preview if attached
     const defaultAttachment = {
       image:
-        'https://lh3.googleusercontent.com/aida-public/AB6AXuBQpDIJW54LFhEFswM3hRua89OnvC_ffUTVqzFvrWKxIuAu7c47NbPhRgNALpOj0jAd0BetdqCgjzdmxh0Wk-DsuIXCI0OAfBNkfUkTR_ILGPAj9ZpAdcANppOAuLxVsG7DSiQ8BIQf9sMdjxneA-x3e4NROil7CQoVeuBQwxJzDT0lX_Br3Qu74X7Z5Bfi0-pm5TTVajhOGkIB_7ypyLK3QbccY-TFajHwZQBIVz0',
-      url: 'github.com/acmelabs/topology-engine',
-      title: 'topology-engine: Ultra-low latency layout solver',
-      description:
-        'A SIMD-accelerated physical force simulation engine tuned for browser runtimes and micro-interactions.',
+        'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=1200&q=80',
+      url: 'x-connect.dev',
+      title: 'Shared Link Preview',
+      description: 'Shared via X Connect.',
     };
 
     const embedType = hasAttachment ? 'link' : postInput.embedType || null;
@@ -203,11 +201,13 @@ export function usePosts() {
     const tempId = `optimistic-${Date.now()}`;
     const optimisticPost = {
       id: tempId,
+      userId: user?.id || null,
       author: {
+        id: user?.id || null,
         name: authorName,
         handle: authorHandle,
         avatar: authorAvatar,
-        verified: true,
+        verified: false,
       },
       time: 'Just now',
       content: content.trim(),
@@ -235,7 +235,6 @@ export function usePosts() {
     // Step C: OPTIMISTIC UPDATE: Prepend immediately to UI
     setPosts([optimisticPost, ...previousPosts]);
 
-    // If Supabase is not configured, we simulate instant success locally
     if (!isSupabaseConfigured) {
       return optimisticPost;
     }
@@ -251,10 +250,6 @@ export function usePosts() {
     try {
       const payload = {
         user_id: user.id,
-        author_name: authorName,
-        author_handle: authorHandle,
-        author_avatar: authorAvatar,
-        author_verified: true,
         content: content.trim(),
         embed_type: embedType,
         embed_data: embedData,
@@ -264,33 +259,41 @@ export function usePosts() {
       const { data, error: insertError } = await supabase
         .from('posts')
         .insert([payload])
-        .select()
+        .select(`
+          *,
+          profiles:user_id (
+            id,
+            username,
+            full_name,
+            avatar_url,
+            is_verified
+          )
+        `)
         .single();
 
       if (insertError) {
         throw insertError;
       }
 
-      // Step E: On Success: Replace optimistic post with server-confirmed post
+      // Step E: Replace optimistic post with confirmed DB record
       const confirmedPost = mapDbRowToPost(data);
-      setPosts((current) =>
-        current.map((post) => (post.id === tempId ? confirmedPost : post))
+      setPosts((prev) =>
+        prev.map((p) => (p.id === tempId ? confirmedPost : p))
       );
 
       return confirmedPost;
     } catch (err) {
-      console.error('[usePosts] Create post failed, rolling back:', err);
-      // Step F: On Error: ROLLBACK to snapshot and set error state
+      console.error('[usePosts] Post creation failed, rolling back:', err);
+      // Rollback on failure
       setPosts(previousPosts);
-      const errorMessage =
-        err.message || 'Failed to create post. Please try again.';
-      setError(errorMessage);
-      throw new Error(errorMessage);
+      const msg = err.message || 'Failed to publish post';
+      setError(msg);
+      throw new Error(msg);
     }
   };
 
   /**
-   * Helper to dismiss error banner
+   * 3. Clear errors
    */
   const clearError = () => setError(null);
 
